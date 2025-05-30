@@ -85,3 +85,33 @@
 
 ;; Variables
 (define-data-var campaign-nonce uint u0)
+
+
+;; Private Functions
+(define-private (is-owner)
+  (is-eq tx-sender contract-owner))
+
+(define-private (current-time)
+  (unwrap-panic (get-block-info? time u0)))
+
+;; Read-only Functions
+(define-read-only (get-campaign-details (campaign-id uint))
+  (map-get? campaigns { campaign-id: campaign-id }))
+
+(define-read-only (get-contribution (campaign-id uint) (contributor principal))
+  (map-get? contributions { campaign-id: campaign-id, contributor: contributor }))
+
+;; Read-only function to get milestone details
+(define-read-only (get-milestone-details (campaign-id uint) (milestone-id uint))
+    (map-get? campaign-milestones { campaign-id: campaign-id, milestone-id: milestone-id })
+)
+
+;; Read-only function to get campaign stats
+(define-read-only (get-campaign-statistics (campaign-id uint))
+    (map-get? campaign-stats { campaign-id: campaign-id })
+)
+
+;; Read-only function to calculate platform fees
+(define-read-only (calculate-platform-fee (amount uint))
+    (/ (* amount (var-get platform-fee-percentage)) u10000)
+)
