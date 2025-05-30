@@ -115,3 +115,96 @@
 (define-read-only (calculate-platform-fee (amount uint))
     (/ (* amount (var-get platform-fee-percentage)) u10000)
 )
+
+
+;; Public Functions
+(define-public (create-campaign (goal uint) (deadline uint))
+  (let
+    (
+      (campaign-id (var-get campaign-nonce))
+    )
+    (asserts! (> goal u0) (err err-invalid-amount))
+    (asserts! (> deadline (current-time)) (err err-deadline-passed))
+    (map-insert campaigns
+      { campaign-id: campaign-id }
+      {
+        owner: tx-sender,
+        goal: goal,
+        raised: u0,
+        deadline: deadline,
+        claimed: false
+      }
+    )
+    (var-set campaign-nonce (+ campaign-id u1))
+    (ok campaign-id)
+  )
+)
+
+(define-public (contribute (campaign-id uint) (amount uint))
+  (let
+    (
+      (campaign (unwrap! (map-get? campaigns { campaign-id: campaign-id }) (err err-not-found)))
+      (current-raised (get raised campaign))
+      (new-raised (+ current-raised amount))
+    )
+    (asserts! (< (current-time) (get deadline campaign)) (err err-deadline-passed))
+    (asserts! (> amount u0) (err err-invalid-amount))
+    (match (stx-transfer? amount tx-sender (as-contract tx-sender))
+      success
+        (begin
+          (map-set campaigns
+            { campaign-id: campaign-id }
+            (merge campaign { raised: new-raised })
+          )
+          (map-set contributions
+            { campaign-id: campaign-id, contributor: tx-sender }
+            { amount: (+ amount (default-to u0 (get amount (map-get? contributions { campaign-id: campaign-id, contributor: tx-sender })))) }
+          )
+          (ok true)
+        )
+      error (err err-transfer-failed)
+    )
+  )
+)
+
+(define-public (claim-funds (campaign-id uint))
+  (let
+    (
+      (campaign (unwrap! (map-get? campaigns { campaign-id: campaign-id }) (err err-not-found)))
+    )
+    (asserts! (is-eq (get owner campaign) tx-sender) (err err-owner-only))
+    (asserts! (>= (current-time) (get deadline campaign)) (err err-deadline-passed))
+    (asserts! (>= (get raised campaign) (get goal campaign)) (err err-goal-not-reached))
+    (asserts! (not (get claimed campaign)) (err err-already-claimed))
+    (match (as-contract (stx-transfer? (get raised campaign) tx-sender (get owner campaign)))
+      success
+        (begin
+          (map-set campaigns
+            { campaign-id: campaign-id }
+            (merge campaign { claimed: true })
+          )
+          (ok true)
+        )
+      error (err err-transfer-failed)
+    )
+  )
+)
+
+(define-public (refund (campaign-id uint))
+  (let
+    (
+      (campaign (unwrap! (map-get? campaigns { campaign-id: campaign-id }) (err err-not-found)))
+      (contribution (unwrap! (map-get? contributions { campaign-id: campaign-id, contributor: tx-sender }) (err err-not-found)))
+    )
+    (asserts! (>= (current-time) (get deadline campaign)) (err err-deadline-passed))
+    (asserts! (< (get raised campaign) (get goal campaign)) (err err-goal-not-reached))
+    (match (as-contract (stx-transfer? (get amount contribution) tx-sender tx-sender))
+      success
+        (begin
+          (map-delete contributions { campaign-id: campaign-id, contributor: tx-sender })
+          (ok true)
+        )
+      error (err err-transfer-failed)
+    )
+  )
+)
