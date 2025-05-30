@@ -408,3 +408,23 @@
         }))
     )
 )
+
+;; Public function to update minimum contribution
+(define-public (update-minimum-contribution (new-minimum uint))
+    (begin
+        (asserts! (is-owner) (err err-owner-only))
+        (var-set minimum-contribution new-minimum)
+        (ok true)
+    )
+)
+
+;; Public function to update platform fee
+(define-public (update-platform-fee (new-fee uint))
+    (begin
+        (asserts! (is-owner) (err err-owner-only))
+        (asserts! (<= new-fee u1000) (err err-invalid-amount)) ;; Max 10%
+        (var-set platform-fee-percentage new-fee)
+        (ok true)
+    )
+)
+
